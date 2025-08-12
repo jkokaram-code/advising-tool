@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Course Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>body { font-family: 'Inter', sans-serif; }</style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Student Course Planner</h1>
+            <p class="text-lg text-gray-600 mt-2">Plan your next semester.</p>
+        </header>
+        
+        <div id="loading-state" class="text-center p-8">
+            <p class="text-gray-600">Loading course offerings...</p>
+        </div>
+
+        <div id="main-content" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <!-- Left Column: Completed Courses Checklist -->
+                <div class="border-r-0 md:border-r md:pr-8 border-gray-200">
+                    <div class="bg-white p-6 rounded-xl shadow-md">
+                        <h2 class="text-2xl font-semibold mb-4 text-gray-800">1. Your Passed Courses</h2>
+                        <p class="text-sm text-gray-600 mb-4">This list was generated from your form submission. You can make corrections if needed.</p>
+                        <div id="course-checklist" class="space-y-1 max-h-[70vh] overflow-y-auto pr-2">
+                            <!-- Checkboxes for passed courses will be dynamically inserted here -->
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Right Column: Recommendations and Submission -->
+                <div class="space-y-8">
+                    <div class="bg-white p-6 rounded-xl shadow-md">
+                        <h2 class="text-2xl font-semibold mb-4 text-gray-800">2. Your Available Courses</h2>
+                        <p class="text-sm text-gray-600 mb-4">Based on your selections, here are the courses you can register for this semester. Please select 3-5 to discuss with your advisor.</p>
+                        <div id="available-courses-list" class="space-y-3">
+                            <p class="text-center p-4 text-gray-500">Select your passed courses on the left to see your options.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-xl shadow-md">
+                        <h2 class="text-2xl font-semibold mb-4 text-gray-800">3. Submit Your Plan</h2>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="studentName" class="block text-sm font-medium text-gray-700">Full Name</label>
+                                <input type="text" id="studentName" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                            </div>
+                            <div>
+                                <label for="studentId" class="block text-sm font-medium text-gray-700">Student ID</label>
+                                <input type="text" id="studentId" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2">
+                            </div>
+                            <button id="submit-plan-btn" class="w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition-colors">
+                                Submit Plan to Advisor
+                            </button>
+                            <div id="student-message" class="mt-4 text-center"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // --- Firebase SDKs ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Firebase Config (DO NOT EDIT) ---
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-course-advisor';
+
+        // --- Firebase Initialization ---
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // --- DOM Elements ---
+        const checklistContainer = document.getElementById('course-checklist');
+        const availableCoursesContainer = document.getElementById('available-courses-list');
+        const submitBtn = document.getElementById('submit-plan-btn');
+        const studentNameInput = document.getElementById('studentName');
+        const studentIdInput = document.getElementById('studentId');
+        const studentMessage = document.getElementById('student-message');
+        const loadingState = document.getElementById('loading-state');
+        const mainContent = document.getElementById('main-content');
+        
+        // --- State Variables ---
+        let completedCourses = new Set();
+        let offeredCourses = new Set();
+        
+        // --- Course Catalog (Single Source of Truth) ---
+        const courseCatalog = [ { id: 'FYEC100', name: 'First Year Experience', semester: 1, prerequisites: [] }, { id: 'WRIT117', name: 'Fundamentals of Writing', semester: 1, prerequisites: [] }, { id: 'GRDE122', name: 'Principles of Design', semester: 1, prerequisites: [] }, { id: 'GRDE124', name: 'Visual Thinking & Advertising Concepts', semester: 1, prerequisites: [] }, { id: 'GRDE129', name: 'Introduction to Graphic Design', semester: 1, prerequisites: [] }, { id: 'COMM108', name: 'Oral Presentation Skills', semester: 2, prerequisites: ['WRIT117'] }, { id: 'GRDE123', name: 'Introduction to Drawing & Painting', semester: 2, prerequisites: ['GRDE122'] }, { id: 'GRDE153', name: 'Image Manipulation', semester: 2, prerequisites: ['GRDE129'] }, { id: 'GRDE182', name: 'Vector Graphics', semester: 2, prerequisites: ['GRDE129'] }, { id: 'GRDE130', name: 'Typography I', semester: 2, prerequisites: ['GRDE122', 'GRDE129'] }, { id: 'MATH116', name: 'Contemporary College Math', semester: 2.5, prerequisites: ['WRIT117'] }, { id: 'PUBR221', name: 'Image, Etiquette & Protocol', semester: 3, prerequisites: ['COMM108'] }, { id: 'LIBS130', name: 'Fundamental Research Skills', semester: 3, prerequisites: ['WRIT117'] }, { id: 'GRDE230', name: 'Typography II', semester: 3, prerequisites: ['GRDE130'] }, { id: 'GRDE234', name: 'Publication Design', semester: 3, prerequisites: ['GRDE130'] }, { id: 'GRDE245', name: 'Art History', semester: 3, prerequisites: ['WRIT117'] }, { id: 'GRDE215', name: 'Digital Photography', semester: 4, prerequisites: ['GRDE153'] }, { id: 'ENTP210', name: 'Fundamentals of Entrepreneurship', semester: 4, prerequisites: ['MATH116'] }, { id: 'GRDE233', name: '3D Design: Rendering & Storyboarding', semester: 4, prerequisites: ['GRDE123', 'GRDE182'] }, { id: 'GRDE253', name: 'Introduction to Motion Graphics', semester: 4, prerequisites: ['GRDE153', 'GRDE182'] }, { id: 'GRDE255', name: 'Graphic Design Practicum', semester: 4, prerequisites: ['GRDE234'] }, { id: 'COMM118', name: 'Communication in the Workplace', semester: 5, prerequisites: ['COMM108'] }, { id: 'HIST210_SPAN100', name: 'History of T&T or Intro to Spanish', semester: 5, prerequisites: ['WRIT117'] }, { id: 'GRDE353', name: 'Advanced Image Manipulation & Vector Graphics', semester: 5, prerequisites: ['GRDE153', 'GRDE182'] }, { id: 'GRDE363', name: 'Colour Theory', semester: 5, prerequisites: ['GRDE122'] }, { id: 'MKTG205', name: 'Principles of Marketing', semester: 5, prerequisites: ['ENTP210'] }, { id: 'GRDE419', name: 'Design for the Web', semester: 6, prerequisites: ['GRDE253'] }, { id: 'GRDE440', name: 'Graphic Design Concepts I', semester: 6, prerequisites: ['GRDE245', 'GRDE124'] }, { id: 'COMM351_MKTG290', name: 'Social Media Comm or Digital Marketing', semester: 6, prerequisites: ['MKTG205'] }, { id: 'ADVT240', name: 'Copywriting', semester: 6, prerequisites: ['MKTG205'] }, { id: 'ADVT230', name: 'Principles of Advertising', semester: 6, prerequisites: ['MKTG205'] }, { id: 'FREE_ELEC1', name: 'Free Elective', semester: 7, prerequisites: [] }, { id: 'GUIDED_ELEC1', name: 'Client Relations / Comm III / PR / Mass Comm', semester: 7, prerequisites: ['COMM118'] }, { id: 'SOCIAL_SCI_ELEC', name: 'Human Behaviour / Society / Religion', semester: 7, prerequisites: ['WRIT117'] }, { id: 'GRDE442', name: 'Graphic Design Concepts II', semester: 7, prerequisites: ['GRDE440'] }, { id: 'GRDE453', name: 'Packaging & Post Production', semester: 7, prerequisites: ['GRDE233', 'GRDE234'] }, { id: 'FREE_ELEC2', name: 'Free Elective', semester: 8, prerequisites: [] }, { id: 'LIT_BUS_SCI_ELEC', name: 'Comparative Lit / Leadership / Natural Sci', semester: 8, prerequisites: ['WRIT117'] }, { id: 'GRDE499', name: 'Senior Project – Graphic Design', semester: 8, prerequisites: ['GRDE442'] }, { id: 'GRDE_PORTFOLIO', name: 'Final year Signature Portfolio', semester: 8, prerequisites: ['GRDE499'] } ];
+
+        // --- Main Function ---
+        async function main() {
+            await signInAnonymously(auth);
+            
+            // Read completed courses from URL before doing anything else
+            processUrlParameters(); 
+            
+            await loadOfferedCourses();
+            
+            loadingState.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+
+            populatePassedChecklist();
+            updateAvailableCourses(); // Initial calculation based on URL data
+            submitBtn.addEventListener('click', submitPlan);
+        }
+
+        // Reads the 'completed' parameter from the URL to set the initial state
+        function processUrlParameters() {
+            const params = new URLSearchParams(window.location.search);
+            const completedParam = params.get('completed');
+            if (completedParam) {
+                const ids = completedParam.split(',');
+                completedCourses = new Set(ids);
+            }
+        }
+        
+        async function loadOfferedCourses() {
+            const offeringsRef = doc(db, `artifacts/${appId}/public/data/offerings`, 'current_semester');
+            try {
+                const docSnap = await getDoc(offeringsRef);
+                if (docSnap.exists()) {
+                    offeredCourses = new Set(docSnap.data().offered_ids || []);
+                } else {
+                    console.log("No offerings document found. Students will see no available courses.");
+                }
+            } catch (error) {
+                console.error("Error loading offered courses:", error);
+                availableCoursesContainer.innerHTML = `<p class="text-red-600 text-center">Error: Could not load course offerings from the database.</p>`;
+            }
+        }
+
+        function populatePassedChecklist() {
+            let lastSemester = 0;
+            courseCatalog.forEach(course => {
+                if (Math.floor(course.semester) > lastSemester) {
+                    const semesterTitle = document.createElement('h3');
+                    semesterTitle.className = 'text-md font-semibold mt-4 mb-1 text-blue-700';
+                    const term = course.semester === 2.5 ? 'Short Term 1' : `Semester ${Math.ceil(course.semester)}`;
+                    semesterTitle.textContent = term;
+                    checklistContainer.appendChild(semesterTitle);
+                    lastSemester = Math.floor(course.semester);
+                }
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-3 p-1.5 rounded-md hover:bg-gray-100 cursor-pointer';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = course.id;
+                
+                // Pre-check the box if the course ID was in the URL
+                if (completedCourses.has(course.id)) {
+                    checkbox.checked = true;
+                }
+
+                checkbox.className = 'h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500';
+                checkbox.addEventListener('change', (e) => {
+                    if (e.target.checked) completedCourses.add(course.id);
+                    else completedCourses.delete(course.id);
+                    updateAvailableCourses();
+                });
+                const courseInfo = document.createElement('span');
+                courseInfo.className = 'text-sm text-gray-700';
+                courseInfo.textContent = `${course.id} - ${course.name}`;
+                label.appendChild(checkbox);
+                label.appendChild(courseInfo);
+                checklistContainer.appendChild(label);
+            });
+        }
+
+        function updateAvailableCourses() {
+            availableCoursesContainer.innerHTML = '';
+            
+            const uncompleted = courseCatalog.filter(c => !completedCourses.has(c.id));
+            const eligible = uncompleted.filter(c => c.prerequisites.every(p => completedCourses.has(p)));
+            const finalRecommendations = eligible.filter(c => offeredCourses.has(c.id));
+
+            if (finalRecommendations.length === 0) {
+                availableCoursesContainer.innerHTML = `<p class="text-center p-4 text-gray-500">No available courses match your completed coursework and current offerings. Please contact your advisor.</p>`;
+                return;
+            }
+
+            finalRecommendations.sort((a,b) => a.semester - b.semester).forEach(course => {
+                const label = document.createElement('label');
+                label.className = 'flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-100 border border-gray-200 cursor-pointer';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.name = 'selected-course';
+                checkbox.value = course.id;
+                checkbox.className = 'h-5 w-5 rounded border-gray-300 text-green-600 focus:ring-green-500';
+                
+                const courseDetails = document.createElement('div');
+                const courseName = document.createElement('p');
+                courseName.className = 'font-semibold text-gray-800';
+                courseName.textContent = `${course.id} - ${course.name}`;
+                const prereqText = document.createElement('p');
+                prereqText.className = 'text-xs text-gray-500 mt-1';
+                prereqText.textContent = course.prerequisites.length > 0 ? `Prerequisites: ${course.prerequisites.join(', ')}` : 'No prerequisites';
+                courseDetails.appendChild(courseName);
+                courseDetails.appendChild(prereqText);
+
+                label.appendChild(checkbox);
+                label.appendChild(courseDetails);
+                availableCoursesContainer.appendChild(label);
+            });
+        }
+        
+        async function submitPlan() {
+            const studentName = studentNameInput.value.trim();
+            const studentId = studentIdInput.value.trim();
+            const selectedForPlan = [];
+            availableCoursesContainer.querySelectorAll('input[name="selected-course"]:checked').forEach(cb => {
+                selectedForPlan.push(cb.value);
+            });
+
+            if (!studentName || !studentId) {
+                studentMessage.textContent = 'Please enter your name and student ID.';
+                studentMessage.className = 'mt-4 text-center text-red-600';
+                return;
+            }
+            if (selectedForPlan.length === 0) {
+                studentMessage.textContent = 'Please select at least one course for your plan.';
+                studentMessage.className = 'mt-4 text-center text-red-600';
+                return;
+            }
+
+            studentMessage.textContent = 'Submitting...';
+            studentMessage.className = 'mt-4 text-center text-blue-600';
+
+            try {
+                const submissionsRef = collection(db, `artifacts/${appId}/public/data/submissions`);
+                await addDoc(submissionsRef, {
+                    studentName: studentName,
+                    studentId: studentId,
+                    selectedCourses: selectedForPlan,
+                    timestamp: new Date()
+                });
+                studentMessage.textContent = 'Plan submitted successfully! Your advisor has been notified.';
+                studentMessage.className = 'mt-4 text-center text-green-600 font-semibold';
+                submitBtn.disabled = true;
+                submitBtn.classList.add('bg-gray-400', 'hover:bg-gray-400');
+            } catch (error) {
+                console.error("Error submitting plan: ", error);
+                studentMessage.textContent = 'Error submitting plan. Please try again.';
+                studentMessage.className = 'mt-4 text-center text-red-600';
+            }
+        }
+
+        main();
+    </script>
+</body>
+</html>
