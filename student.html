@@ -71,9 +71,17 @@
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, addDoc, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // --- Firebase Config (DO NOT EDIT) ---
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { apiKey: "...", authDomain: "...", projectId: "..." };
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-course-advisor';
+        // --- Your Unique Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyB1A0f2hmMDvD0UWj_qUvaxhrRHb1WBGEs",
+            authDomain: "course-advisor-app-9d20b.firebaseapp.com",
+            projectId: "course-advisor-app-9d20b",
+            storageBucket: "course-advisor-app-9d20b.appspot.com",
+            messagingSenderId: "696722585262",
+            appId: "1:696722585262:web:eaef6374b9a5ce33f2df3f"
+        };
+        
+        const appId = firebaseConfig.projectId;
 
         // --- Firebase Initialization ---
         const app = initializeApp(firebaseConfig);
